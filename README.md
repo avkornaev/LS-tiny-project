@@ -154,9 +154,48 @@ Colab server does not guarantee that PyTorch is using a GPU. If the check fails,
 click the **Colab** button in the notebook toolbar, remove the current server,
 then select **Select Kernel → Colab → New Colab Server** and choose a GPU.
 
-### 3. Clone and install this exact project on the remote server
+### 3. Copy and install this exact project on the remote server
 
-Run these cells. The first command also works when the repository was already
+#### Recommended for a private repository: upload from VS Code
+
+If GitHub asks for a username while cloning, the repository is private and the
+anonymous clone command cannot authenticate. Do not enter a password or paste a
+GitHub token into a notebook cell. Instead:
+
+1. In the ordinary VS Code Explorer, right-click the local
+   `LS-tiny-project` folder.
+2. Select **Upload to Colab**.
+3. Select the active Colab server if VS Code asks which server to use.
+4. In the Colab extension's **Contents** view, confirm that
+   `/content/LS-tiny-project/pyproject.toml` exists.
+
+You can verify the upload from a cell:
+
+```python
+from pathlib import Path
+
+project_dir = Path("/content/LS-tiny-project")
+assert (project_dir / "pyproject.toml").is_file(), (
+    "Upload the local LS-tiny-project folder to /content first"
+)
+print("Project uploaded to", project_dir)
+```
+
+Then install it:
+
+```python
+%cd /content/LS-tiny-project
+!python -m pip install -e ".[dev]"
+```
+
+This route includes your current local files, including changes that have not
+yet been pushed. The upload must be repeated after a new Colab server is created
+because `/content` is temporary.
+
+#### Alternative for a public repository: clone from GitHub
+
+If the repository is public and the desired revision has already been pushed,
+run these cells. The first command also works when the repository was already
 cloned earlier in the same runtime:
 
 ```python
@@ -172,8 +211,10 @@ Confirm that the installed code is the expected revision:
 !git status --short
 ```
 
-The status should be clean. Record the printed commit hash with the experiment
-results.
+For a Git clone, the status should be clean and the printed commit hash should be
+recorded with the experiment results. For a VS Code upload, `git` metadata may be
+absent; instead record the local commit hash before uploading and archive the
+uploaded source with the results.
 
 ### 4. Run tests and a GPU smoke test
 
@@ -308,6 +349,10 @@ stored only under `/content` disappears when the server is removed or expires.
 - **`ModuleNotFoundError: label_smoothing`:** rerun `%cd
   /content/LS-tiny-project` and `!python -m pip install -e ".[dev]"` in the active
   Colab kernel.
+- **`fatal: could not read Username for 'https://github.com'`:** GitHub requires
+  authentication, normally because the repository is private. Use **Upload to
+  Colab** as described above, or make the repository public before cloning. Do
+  not place a personal access token in a saved notebook.
 - **The runtime disconnected:** inspect the persistent `runs.csv`. Because raw
   results are saved after each run, completed rows remain, but restart the full
   command in a new empty output folder to preserve a single clean, paired study.
