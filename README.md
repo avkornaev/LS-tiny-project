@@ -2,6 +2,17 @@
 
 A small, reproducible project for learning how to plan, implement, test, run, and report a machine-learning experiment with ChatGPT, Codex, Google Colab, and Prism.
 
+## Starting again with Codex
+
+For a clean implementation attempt, open the repository in Codex and use
+[`CODEX_PROMPT.md`](CODEX_PROMPT.md). It preserves the original request and lists
+the later protocol and reporting amendments. Codex should read `AGENTS.md` and
+create or update `PLAN.md` before implementation.
+
+If rebuilding in a new checkout, keep experimental outputs outside the source
+tree or in ignored timestamped folders. Do not copy numerical values from an old
+run into a new report.
+
 ## Research question
 
 How does label smoothing change the accuracy, confidence, and calibration of logistic regression on MNIST digits 3 and 7?
@@ -51,8 +62,10 @@ Avoid experiment frameworks, configuration frameworks, and tracking services. Th
 ```text
 .
 ├── AGENTS.md
+├── CODEX_PROMPT.md
 ├── README.md
 ├── PLAN.md
+├── REPORT.md
 ├── pyproject.toml
 ├── src/label_smoothing/
 │   ├── data.py
@@ -62,10 +75,8 @@ Avoid experiment frameworks, configuration frameworks, and tracking services. Th
 │   ├── experiment.py
 │   └── plots.py
 ├── tests/
-├── notebooks/
-│   └── label_smoothing_colab.ipynb
-├── results/
-└── figures/
+└── notebooks/
+    └── label_smoothing_colab.ipynb
 ```
 
 Do not commit downloaded MNIST files, virtual environments, caches, or model checkpoints.
@@ -83,6 +94,10 @@ ruff check .
 python -m label_smoothing.experiment --smoke
 python -m label_smoothing.experiment --all
 ```
+
+For example, `--output-dir experiment-reports` produces paths such as
+`experiment-reports/2026-09-17_14-30-00-123456+0300_all/`. The shared MNIST
+download is stored in `experiment-reports/data/`.
 
 The runner uses `--device auto` by default: CUDA is selected when PyTorch can
 access a GPU, otherwise it uses the CPU. Use `--device cuda` when you specifically
@@ -234,8 +249,11 @@ You can also verify the recorded device:
 
 ```python
 import json
+from pathlib import Path
 
-with open("/content/smoke-output/results/config.json") as file:
+smoke_runs = list(Path("/content/smoke-output").glob("*_smoke"))
+smoke_dir = max(smoke_runs, key=lambda path: path.stat().st_mtime)
+with (smoke_dir / "results/config.json").open() as file:
     smoke_config = json.load(file)
 smoke_config["device"], smoke_config["gpu_name"]
 ```
