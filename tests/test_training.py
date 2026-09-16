@@ -31,7 +31,7 @@ def test_metrics_are_finite() -> None:
 
 
 def test_tiny_cpu_experiment_creates_outputs(tmp_path: Path) -> None:
-    run_experiment(tmp_path, smoke=True)
+    run_dir = run_experiment(tmp_path, smoke=True)
     expected = [
         "results/runs.csv",
         "results/summary.csv",
@@ -40,14 +40,16 @@ def test_tiny_cpu_experiment_creates_outputs(tmp_path: Path) -> None:
         "results/config.json",
         "results/validation_curves.csv",
         "results/reliability_bins.csv",
-        "figures/metrics.png",
         "figures/reliability.png",
         "figures/confidence.png",
         "figures/validation_loss.png",
         "figures/tsne.png",
+        "report.md",
     ]
-    assert all((tmp_path / path).is_file() for path in expected)
-    runs = pd.read_csv(tmp_path / "results/runs.csv")
+    assert all((run_dir / path).is_file() for path in expected)
+    assert run_dir.parent == tmp_path
+    assert run_dir.name.endswith("_smoke")
+    runs = pd.read_csv(run_dir / "results/runs.csv")
     assert len(runs) == 2
     assert set(runs["epsilon"]) == {0.0, 0.1}
     assert ExperimentConfig().seeds == (42, 123, 456)

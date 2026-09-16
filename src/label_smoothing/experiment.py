@@ -7,6 +7,7 @@ import importlib.metadata
 import json
 import random
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -29,7 +30,7 @@ class ExperimentConfig:
     split_seed: int = 2026
     learning_rate: float = 0.1
     batch_size: int = 128
-    epochs: int = 10
+    epochs: int = 20
     ece_bins: int = 10
 
 
@@ -193,6 +194,88 @@ def make_prism_tables(results_dir: Path) -> None:
     reliability.to_csv(results_dir / "reliability_bins.csv", index=False)
 
 
+def write_report(run_dir: Path, smoke: bool) -> None:
+    """Write a self-contained Markdown report from saved result tables."""
+    results_dir = run_dir / "results"
+    summary = pd.read_csv(results_dir / "summary.csv")
+    runs = pd.read_csv(results_dir / "runs.csv")
+    metric_labels = {
+        "accuracy": "Accuracy",
+        "nll": "Hard-label NLL",
+        "brier": "Brier score",
+        "ece": "ECE (10 bins)",
+        "mean_confidence": "Mean confidence",
+        "logit_margin": "Absolute logit margin",
+    }
+    lines = [
+        "# Label Smoothing on MNIST 3 vs 7",
+        "",
+        f"Generated: {datetime.now().astimezone().isoformat(timespec='seconds')}",
+        "",
+    ]
+    if smoke:
+        lines.extend(
+            [
+                "> **Smoke-test report:** synthetic data, one seed, and one epoch. ",
+                "> These values verify the pipeline and are not scientific results.",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "## Aggregate metrics",
+            "",
+            "Values are mean ± sample standard deviation across paired seeds.",
+            "",
+            "| Epsilon | Metric | Mean ± std |",
+            "|---:|---|---:|",
+        ]
+    )
+    for _, row in summary.iterrows():
+        for metric, label in metric_labels.items():
+            mean = row[f"{metric}_mean"]
+            std = row[f"{metric}_std"]
+            formatted = (
+                f"{mean:.4f} ± {std:.4f}"
+                if pd.notna(std)
+                else f"{mean:.4f} ± n/a"
+            )
+            lines.append(f"| {row['epsilon']:g} | {label} | {formatted} |")
+    lines.extend(
+        [
+            "",
+            "## Individual paired runs",
+            "",
+            "| Seed | Epsilon | Accuracy | NLL | Brier | ECE | Confidence | Margin |",
+            "|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
+    for _, row in runs.iterrows():
+        lines.append(
+            f"| {int(row['seed'])} | {row['epsilon']:g} | "
+            f"{row['accuracy']:.4f} | {row['nll']:.4f} | "
+            f"{row['brier']:.4f} | {row['ece']:.4f} | "
+            f"{row['mean_confidence']:.4f} | {row['logit_margin']:.4f} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Diagnostic figures",
+            "",
+            "- [Validation loss](figures/validation_loss.png)",
+            "- [Reliability](figures/reliability.png)",
+            "- [Confidence](figures/confidence.png)",
+            "- [t-SNE](figures/tsne.png)",
+            "",
+            "Raw run-level and Prism-ready tables are in `results/`. Interpret this ",
+            "as a small controlled study; three paired seeds do not support a broad ",
+            "claim of statistical significance.",
+            "",
+        ]
+    )
+    (run_dir / "report.md").write_text("\n".join(lines))
+
+
 def package_versions() -> dict[str, str]:
     packages = ["torch", "torchvision", "numpy", "pandas", "scikit-learn", "matplotlib"]
     return {name: importlib.metadata.version(name) for name in packages}
@@ -207,17 +290,20 @@ def resolve_device(requested: str) -> torch.device:
     return torch.device(requested)
 
 
-def run_experiment(output_dir: Path, smoke: bool, device_name: str = "auto") -> None:
+def run_experiment(output_dir: Path, smoke: bool, device_name: str = "auto") -> Path:
     config = ExperimentConfig(seeds=(42,), epochs=1) if smoke else ExperimentConfig()
     device = resolve_device(device_name)
-    results_dir = output_dir / "results"
-    figures_dir = output_dir / "figures"
+    mode = "smoke" if smoke else "all"
+    timestamp = datetime.now().astimezone().strftime("%Y-%m-%d_%H-%M-%S-%f%z")
+    run_dir = output_dir / f"{timestamp}_{mode}"
+    results_dir = run_dir / "results"
+    figures_dir = run_dir / "figures"
     results_dir.mkdir(parents=True, exist_ok=True)
     figures_dir.mkdir(parents=True, exist_ok=True)
     datasets = make_smoke_data() if smoke else load_mnist(output_dir / "data")
 
     metadata = {
-        "mode": "smoke" if smoke else "all",
+        "mode": mode,
         "device": str(device),
         "gpu_name": torch.cuda.get_device_name(0) if device.type == "cuda" else None,
         "protocol": asdict(config),
@@ -242,7 +328,9 @@ def run_experiment(output_dir: Path, smoke: bool, device_name: str = "auto") -> 
     aggregate_results(results_dir / "runs.csv", results_dir / "summary.csv")
     make_prism_tables(results_dir)
     make_all_figures(results_dir, figures_dir)
-    print(f"results written under {output_dir.resolve()}")
+    write_report(run_dir, smoke)
+    print(f"results written under {run_dir.resolve()}")
+    return run_dir
 
 
 def parse_args() -> argparse.Namespace:

@@ -4,7 +4,8 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 data/
+*_all/
+*_smoke/
 results/*.csv
 results/*.json
 figures/*.png
-

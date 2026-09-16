@@ -18,7 +18,7 @@ This is a focused teaching experiment, not a full reproduction of [When Does Lab
 | Conditions | Label smoothing $\varepsilon=0$ and $\varepsilon=0.1$ |
 | Seeds | 42, 123, 456 |
 | Split | Fixed stratified 80/20 split of the training set; split seed 2026 |
-| Training | SGD, learning rate 0.1, batch size 128, 10 epochs |
+| Training | SGD, learning rate 0.1, batch size 128, 20 epochs |
 | Runs | 2 conditions × 3 paired seeds = 6 |
 | Metrics | Accuracy, hard-label NLL, Brier score, ECE |
 | Diagnostics | Mean confidence and absolute logit margin |
@@ -88,14 +88,16 @@ The runner uses `--device auto` by default: CUDA is selected when PyTorch can
 access a GPU, otherwise it uses the CPU. Use `--device cuda` when you specifically
 want the command to fail instead of silently falling back to CPU.
 
-The smoke run uses a tiny subset and one epoch. The full run executes all six experiments and creates:
+The smoke run uses synthetic data and one epoch. The full run uses every eligible
+MNIST 3/7 training example and executes all six experiments. Every invocation
+creates a separate `<date>_<time>_<mode>/` folder beneath `--output-dir` with:
 
+- `report.md` — individual metrics and aggregate `mean ± std` results;
 - `results/runs.csv` — one row per run;
 - `results/summary.csv` — mean and standard deviation by condition;
 - `results/history.csv` — per-epoch training loss and hard-label validation NLL;
 - `results/validation_curves.csv` and `results/reliability_bins.csv` — tidy
   aggregate tables for Prism;
-- `figures/metrics.png`;
 - `figures/reliability.png`;
 - `figures/confidence.png`;
 - `figures/validation_loss.png`;
@@ -250,27 +252,41 @@ from google.colab import drive
 drive.mount("/content/drive")
 ```
 
-After authorization, create a new output folder name for this run. Do not reuse
-a folder containing earlier results unless you intentionally want to overwrite
-those CSVs and figures.
+After authorization, create one persistent base folder. The experiment creates
+a new timestamped child folder on every invocation, so reports never overwrite
+one another.
 
 ```python
 from pathlib import Path
 
-output_dir = Path("/content/drive/MyDrive/LS-tiny-project/full-run-001")
+output_dir = Path("/content/drive/MyDrive/LS-tiny-project/reports")
 output_dir.mkdir(parents=True, exist_ok=True)
 print(output_dir)
 ```
 
 ### 6. Start the full six-run training job
 
-Run exactly one full experiment command:
+Run exactly one full experiment command. In a notebook, use `subprocess.run` with
+`check=True`; unlike an IPython `!` command, this raises an error and stops the
+cell when training fails instead of allowing later display cells to run:
 
 ```python
-!python -m label_smoothing.experiment \
-    --all \
-    --device cuda \
-    --output-dir "/content/drive/MyDrive/LS-tiny-project/full-run-001"
+import subprocess
+import sys
+
+subprocess.run(
+    [
+        sys.executable,
+        "-m",
+        "label_smoothing.experiment",
+        "--all",
+        "--device",
+        "cuda",
+        "--output-dir",
+        "/content/drive/MyDrive/LS-tiny-project/reports",
+    ],
+    check=True,
+)
 ```
 
 `--device cuda` is intentional: if the GPU connection is lost, the experiment
@@ -285,48 +301,52 @@ scientific protocol.
 
 ### 7. Confirm and retrieve the results
 
-When the command finishes, inspect the configuration and tables:
+When the command finishes, locate the newest timestamped full-run folder and
+inspect its report, configuration, and tables:
 
 ```python
 from pathlib import Path
 import json
 import pandas as pd
 
-output_dir = Path("/content/drive/MyDrive/LS-tiny-project/full-run-001")
-with (output_dir / "results/config.json").open() as file:
+output_dir = Path("/content/drive/MyDrive/LS-tiny-project/reports")
+run_dir = max(output_dir.glob("*_all"), key=lambda path: path.stat().st_mtime)
+with (run_dir / "results/config.json").open() as file:
     config = json.load(file)
 
 print("Device:", config["device"])
 print("GPU:", config["gpu_name"])
-display(pd.read_csv(output_dir / "results/runs.csv"))
-display(pd.read_csv(output_dir / "results/summary.csv"))
+print("Report folder:", run_dir)
+display(pd.read_csv(run_dir / "results/runs.csv"))
+display(pd.read_csv(run_dir / "results/summary.csv"))
 ```
 
 The completed folder should contain:
 
 ```text
-full-run-001/
-├── data/                         # downloaded MNIST; do not commit
-├── results/
-│   ├── config.json
-│   ├── history.csv
-│   ├── predictions.csv
-│   ├── reliability_bins.csv
-│   ├── runs.csv                  # six rows: 3 seeds × 2 conditions
-│   ├── summary.csv
-│   └── validation_curves.csv
-└── figures/
-    ├── confidence.png
-    ├── metrics.png
-    ├── reliability.png
-    ├── tsne.png
-    └── validation_loss.png
+reports/
+├── data/                                  # shared MNIST download; do not commit
+└── 2026-09-17_14-30-00-123456+0300_all/
+    ├── report.md                          # metrics as mean ± std
+    ├── results/
+    │   ├── config.json
+    │   ├── history.csv
+    │   ├── predictions.csv
+    │   ├── reliability_bins.csv
+    │   ├── runs.csv                       # 3 seeds × 2 conditions
+    │   ├── summary.csv
+    │   └── validation_curves.csv
+    └── figures/
+        ├── confidence.png
+        ├── reliability.png
+        ├── tsne.png
+        └── validation_loss.png
 ```
 
 Check that `runs.csv` has six rows and no missing metrics:
 
 ```python
-runs = pd.read_csv(output_dir / "results/runs.csv")
+runs = pd.read_csv(run_dir / "results/runs.csv")
 assert len(runs) == 6
 assert set(runs["seed"]) == {42, 123, 456}
 assert set(runs["epsilon"]) == {0.0, 0.1}
@@ -356,6 +376,10 @@ stored only under `/content` disappears when the server is removed or expires.
 - **The runtime disconnected:** inspect the persistent `runs.csv`. Because raw
   results are saved after each run, completed rows remain, but restart the full
   command in a new empty output folder to preserve a single clean, paired study.
+- **`FileNotFoundError` for `results/runs.csv`:** the results cell was run before
+  any training run completed. Confirm that Drive is mounted, inspect the output
+  from the full training cell, and rerun that cell with `check=True`. Do not run
+  the display cell until training finishes without an exception.
 - **Local edits are missing:** commit and push them to GitHub, then run the clone
   or pull cell again. The remote server cannot see uncommitted local files.
 

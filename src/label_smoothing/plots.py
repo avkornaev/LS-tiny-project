@@ -11,21 +11,6 @@ import pandas as pd
 from sklearn.manifold import TSNE
 
 
-def plot_metrics(runs_path: Path, figure_path: Path) -> None:
-    runs = pd.read_csv(runs_path)
-    metrics = ["accuracy", "nll", "brier", "ece", "mean_confidence", "logit_margin"]
-    fig, axes = plt.subplots(2, 3, figsize=(11, 6.5))
-    for axis, metric in zip(axes.flat, metrics):  # noqa: B905 (Python 3.9 checks)
-        grouped = runs.groupby("epsilon")[metric]
-        means = grouped.mean()
-        errors = grouped.std().fillna(0)
-        axis.errorbar(means.index.astype(str), means, yerr=errors, fmt="o", capsize=4)
-        axis.set(title=metric.replace("_", " ").title(), xlabel="Smoothing epsilon")
-    fig.tight_layout()
-    fig.savefig(figure_path, dpi=160)
-    plt.close(fig)
-
-
 def plot_reliability(predictions_path: Path, figure_path: Path) -> None:
     predictions = pd.read_csv(predictions_path)
     fig, axis = plt.subplots(figsize=(6, 5))
@@ -157,7 +142,6 @@ def plot_tsne(predictions_path: Path, figure_path: Path) -> None:
 
 def make_all_figures(results_dir: Path, figures_dir: Path) -> None:
     figures_dir.mkdir(parents=True, exist_ok=True)
-    plot_metrics(results_dir / "runs.csv", figures_dir / "metrics.png")
     plot_reliability(results_dir / "predictions.csv", figures_dir / "reliability.png")
     plot_confidence(results_dir / "predictions.csv", figures_dir / "confidence.png")
     plot_validation_loss(

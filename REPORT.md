@@ -26,7 +26,9 @@ distinguish MNIST digits 3 and 7?
 - Paired seeds: 42, 123, and 456.
 - Split: one stratified 80/20 split of the official training set, using seed
   2026, shared by all runs.
-- Optimization: SGD, learning rate 0.1, batch size 128, and 10 epochs.
+- Optimization: SGD, learning rate 0.1, batch size 128, and 20 epochs. The
+  original design used 10 epochs; this was explicitly extended to make the
+  final simulation approximately twice as long.
 - Pairing: model initialization and minibatch order match within each seed pair;
   only the smoothing value changes.
 - Evaluation: all metrics use hard labels. The official test set is not used for
@@ -64,12 +66,13 @@ and logit margin are diagnostics rather than standalone measures of quality.
 `figures/validation_loss.png` plots hard-label validation NLL for every seed as a
 faint line and the condition mean as a strong line. This figure can show whether
 the conditions follow different optimization trajectories. Validation values
-are descriptive only; training always lasts 10 epochs and there is no early
+are descriptive only; training always lasts 20 epochs and there is no early
 stopping or model selection.
 
 ### Metrics, reliability, and confidence
 
-- `figures/metrics.png` shows run-level condition means and standard deviations.
+- Each timestamped run's `report.md` shows every run-level value and condition
+  summaries in mean ± standard deviation notation.
 - `figures/reliability.png` compares observed accuracy with mean confidence in
   occupied confidence bins.
 - `figures/confidence.png` shows the distribution of maximum predicted

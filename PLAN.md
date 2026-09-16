@@ -26,7 +26,8 @@
 - Compare only smoothing values 0 and 0.1 with paired seeds 42, 123, and 456.
   Within a pair, reset model initialization and batch order from the same seed;
   only the loss smoothing value may differ.
-- Train with SGD, learning rate 0.1, batch size 128, and 10 epochs.
+- Train with SGD, learning rate 0.1, batch size 128, and 20 epochs. This is an
+  explicit user-requested revision of the original 10-epoch protocol.
 - Implement smoothed targets explicitly as
   `(1 - epsilon) * one_hot + epsilon / num_classes`.
 - Evaluate accuracy, hard-label NLL, Brier score, ECE, mean confidence, and
@@ -41,14 +42,16 @@
   validation NLL by epoch and condition.
 - `results/reliability_bins.csv`: Prism-ready calibration-bin values.
 - `results/config.json`: protocol, command mode, and package versions.
-- `figures/metrics.png`, `figures/reliability.png`, and
-  `figures/confidence.png`, generated from saved raw result CSV files.
+- `figures/reliability.png` and `figures/confidence.png`, generated from saved
+  raw result CSV files.
 - `figures/validation_loss.png`: hard-label validation NLL across epochs, with
   individual paired runs and condition means.
 - `figures/tsne.png`: per-run t-SNE views of the final two-logit test
   representation, clearly treated as an exploratory diagnostic.
 - `REPORT.md`: protocol, data dictionary, Prism workflow, interpretation rules,
   and reproducibility limitations without invented full-study results.
+- `<date>_<time>_<mode>/report.md`: generated per-experiment report containing
+  individual metrics and aggregate `mean ± std` values.
 
 An alternate `--output-dir` contains the same `results/` and `figures/`
 subdirectories. Smoke mode uses deterministic synthetic MNIST-shaped data, one
