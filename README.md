@@ -84,6 +84,10 @@ python -m label_smoothing.experiment --smoke
 python -m label_smoothing.experiment --all
 ```
 
+The runner uses `--device auto` by default: CUDA is selected when PyTorch can
+access a GPU, otherwise it uses the CPU. Use `--device cuda` when you specifically
+want the command to fail instead of silently falling back to CPU.
+
 The smoke run uses a tiny subset and one epoch. The full run executes all six experiments and creates:
 
 - `results/runs.csv` — one row per run;
@@ -97,28 +101,223 @@ The smoke run uses a tiny subset and one epoch. The full run executes all six ex
 - `figures/validation_loss.png`;
 - `figures/tsne.png`.
 
-## Google Colab
+## Train on a Colab GPU from VS Code
 
-Keep the code in GitHub. Colab should clone the repository and install it:
+The local VS Code window is only the notebook interface. Code cells run on a
+separate Colab server, whose filesystem normally starts empty and is temporary.
+The workflow below therefore clones the GitHub repository into `/content`, then
+writes final results to Google Drive.
+
+Before starting, commit and push the version you want to run to
+`https://github.com/avkornaev/LS-tiny-project`. Uncommitted files on your local
+computer are not automatically visible to the Colab server.
+
+### 1. Open the project notebook
+
+In VS Code, open
+`notebooks/label_smoothing_colab.ipynb`. Do not start the full run from a local
+Python kernel.
+
+At the upper right of the notebook:
+
+1. Click **Select Kernel**.
+2. Select **Colab**.
+3. Sign in to the intended Google account and approve the connection if asked.
+4. Select **New Colab Server** and choose an available GPU machine type. Use
+   **Auto Connect** only if it assigns a GPU when checked in the next step.
+
+The official extension describes this connection path as **Select Kernel →
+Colab**, with either **Auto Connect** or **New Colab Server**. GPU types and free
+tier availability can change, so the project does not require a particular GPU.
+
+### 2. Verify that the remote kernel really has a GPU
+
+Run this as the first notebook cell:
 
 ```python
-!git clone <YOUR_GITHUB_REPOSITORY_URL>
-%cd <REPOSITORY_DIRECTORY>
-!pip install -e ".[dev]"
-!pytest -q
-!python -m label_smoothing.experiment --all
+import torch
+
+print("PyTorch:", torch.__version__)
+print("CUDA available:", torch.cuda.is_available())
+print("GPU:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "none")
+assert torch.cuda.is_available(), "This Colab server does not have a CUDA GPU"
 ```
 
-Google Drive is optional. Mount it only when results must survive the Colab session:
+Then run:
+
+```python
+!nvidia-smi
+```
+
+The assertion must pass and `nvidia-smi` must list a GPU. Merely connecting to a
+Colab server does not guarantee that PyTorch is using a GPU. If the check fails,
+click the **Colab** button in the notebook toolbar, remove the current server,
+then select **Select Kernel → Colab → New Colab Server** and choose a GPU.
+
+### 3. Clone and install this exact project on the remote server
+
+Run these cells. The first command also works when the repository was already
+cloned earlier in the same runtime:
+
+```python
+!if [ -d /content/LS-tiny-project/.git ]; then git -C /content/LS-tiny-project pull --ff-only; else git clone https://github.com/avkornaev/LS-tiny-project.git /content/LS-tiny-project; fi
+%cd /content/LS-tiny-project
+!python -m pip install -e ".[dev]"
+```
+
+Confirm that the installed code is the expected revision:
+
+```python
+!git rev-parse HEAD
+!git status --short
+```
+
+The status should be clean. Record the printed commit hash with the experiment
+results.
+
+### 4. Run tests and a GPU smoke test
+
+```python
+!pytest -q
+!ruff check .
+!python -m label_smoothing.experiment --smoke --device cuda --output-dir /content/smoke-output
+```
+
+The smoke command must print `device=cuda` twice. It uses synthetic data and one
+epoch, so it verifies the remote GPU path without starting the scientific run.
+It is not part of the study results.
+
+You can also verify the recorded device:
+
+```python
+import json
+
+with open("/content/smoke-output/results/config.json") as file:
+    smoke_config = json.load(file)
+smoke_config["device"], smoke_config["gpu_name"]
+```
+
+### 5. Mount Google Drive for persistent results
+
+Colab servers are temporary. In VS Code, open the Command Palette with
+`Cmd+Shift+P` on macOS or `Ctrl+Shift+P` on Windows/Linux, run **Colab: Mount
+Google Drive to Server...**, and execute the cell it inserts. Alternatively run:
 
 ```python
 from google.colab import drive
-drive.mount("/content/drive")
 
+drive.mount("/content/drive")
+```
+
+After authorization, create a new output folder name for this run. Do not reuse
+a folder containing earlier results unless you intentionally want to overwrite
+those CSVs and figures.
+
+```python
+from pathlib import Path
+
+output_dir = Path("/content/drive/MyDrive/LS-tiny-project/full-run-001")
+output_dir.mkdir(parents=True, exist_ok=True)
+print(output_dir)
+```
+
+### 6. Start the full six-run training job
+
+Run exactly one full experiment command:
+
+```python
 !python -m label_smoothing.experiment \
     --all \
-    --output-dir "/content/drive/MyDrive/label-smoothing-results"
+    --device cuda \
+    --output-dir "/content/drive/MyDrive/LS-tiny-project/full-run-001"
 ```
+
+`--device cuda` is intentional: if the GPU connection is lost, the experiment
+stops with a clear error instead of continuing unnoticed on CPU. The command
+downloads MNIST, uses the one fixed split, trains both smoothing conditions for
+seeds 42, 123, and 456, and saves each completed run before aggregation. Do not
+start another copy of the command while it is running.
+
+This model is only one linear layer, so GPU utilization may look low and a GPU
+may not be faster than a modern CPU. The GPU changes the compute device, not the
+scientific protocol.
+
+### 7. Confirm and retrieve the results
+
+When the command finishes, inspect the configuration and tables:
+
+```python
+from pathlib import Path
+import json
+import pandas as pd
+
+output_dir = Path("/content/drive/MyDrive/LS-tiny-project/full-run-001")
+with (output_dir / "results/config.json").open() as file:
+    config = json.load(file)
+
+print("Device:", config["device"])
+print("GPU:", config["gpu_name"])
+display(pd.read_csv(output_dir / "results/runs.csv"))
+display(pd.read_csv(output_dir / "results/summary.csv"))
+```
+
+The completed folder should contain:
+
+```text
+full-run-001/
+├── data/                         # downloaded MNIST; do not commit
+├── results/
+│   ├── config.json
+│   ├── history.csv
+│   ├── predictions.csv
+│   ├── reliability_bins.csv
+│   ├── runs.csv                  # six rows: 3 seeds × 2 conditions
+│   ├── summary.csv
+│   └── validation_curves.csv
+└── figures/
+    ├── confidence.png
+    ├── metrics.png
+    ├── reliability.png
+    ├── tsne.png
+    └── validation_loss.png
+```
+
+Check that `runs.csv` has six rows and no missing metrics:
+
+```python
+runs = pd.read_csv(output_dir / "results/runs.csv")
+assert len(runs) == 6
+assert set(runs["seed"]) == {42, 123, 456}
+assert set(runs["epsilon"]) == {0.0, 0.1}
+assert set(runs["device"]) == {"cuda"}
+assert not runs.isna().any().any()
+```
+
+The files are already persistent in Google Drive. The Colab extension's
+**Contents** view can also browse `/content` and download files, but anything
+stored only under `/content` disappears when the server is removed or expires.
+
+### Troubleshooting
+
+- **`CUDA was requested, but PyTorch cannot access a GPU`:** reconnect using a
+  new Colab GPU server, rerun the GPU checks, then rerun the command. Do not
+  change the command to CPU midway through a paired study.
+- **No GPU machine type is offered:** GPU access is subject to Colab availability
+  and account limits. Wait and try later or use a paid Colab tier; available GPU
+  models and limits are not guaranteed.
+- **`ModuleNotFoundError: label_smoothing`:** rerun `%cd
+  /content/LS-tiny-project` and `!python -m pip install -e ".[dev]"` in the active
+  Colab kernel.
+- **The runtime disconnected:** inspect the persistent `runs.csv`. Because raw
+  results are saved after each run, completed rows remain, but restart the full
+  command in a new empty output folder to preserve a single clean, paired study.
+- **Local edits are missing:** commit and push them to GitHub, then run the clone
+  or pull cell again. The remote server cannot see uncommitted local files.
+
+For current extension behavior, see the official [Google Colab VS Code extension
+guide](https://github.com/googlecolab/colab-vscode/wiki/User-Guide). For current
+resource behavior and availability, see the official [Colab
+FAQ](https://research.google.com/colaboratory/faq.html).
 
 For submission, provide the GitHub commit URL and, if required, upload a ZIP archive containing the source, notebook, saved results, and figures. Do not include the downloaded dataset.
 

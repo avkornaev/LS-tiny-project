@@ -46,13 +46,13 @@ def make_loader(dataset: TensorDataset, batch_size: int, seed: int) -> DataLoade
 
 @torch.no_grad()
 def collect_logits(
-    model: nn.Module, dataset: TensorDataset
+    model: nn.Module, dataset: TensorDataset, device: torch.device
 ) -> tuple[torch.Tensor, torch.Tensor]:
     model.eval()
     logits_parts: list[torch.Tensor] = []
     label_parts: list[torch.Tensor] = []
     for images, labels in DataLoader(dataset, batch_size=512, shuffle=False):
-        logits_parts.append(model(images))
+        logits_parts.append(model(images.to(device)).cpu())
         label_parts.append(labels)
     return torch.cat(logits_parts), torch.cat(label_parts)
 
@@ -62,10 +62,11 @@ def run_training(
     seed: int,
     epsilon: float,
     config: ExperimentConfig,
-) -> tuple[dict[str, float | int], list[dict[str, float | int]], pd.DataFrame]:
+    device: torch.device,
+) -> tuple[dict[str, object], list[dict[str, float | int]], pd.DataFrame]:
     """Train one run and return its metrics, history, and test predictions."""
     seed_everything(seed)
-    model = make_model()
+    model = make_model().to(device)
     optimizer = torch.optim.SGD(model.parameters(), lr=config.learning_rate)
     train_loader = make_loader(datasets.train, config.batch_size, seed)
     history: list[dict[str, float | int]] = []
@@ -75,6 +76,8 @@ def run_training(
         loss_sum = 0.0
         example_count = 0
         for images, labels in train_loader:
+            images = images.to(device)
+            labels = labels.to(device)
             optimizer.zero_grad()
             loss = label_smoothed_cross_entropy(model(images), labels, epsilon)
             loss.backward()
@@ -83,7 +86,7 @@ def run_training(
             example_count += len(labels)
 
         validation_logits, validation_labels = collect_logits(
-            model, datasets.validation
+            model, datasets.validation, device
         )
         history.append(
             {
@@ -98,7 +101,7 @@ def run_training(
         )
 
     # Test data is touched only after all training epochs have finished.
-    test_logits, test_labels = collect_logits(model, datasets.test)
+    test_logits, test_labels = collect_logits(model, datasets.test, device)
     metrics = classification_metrics(test_logits, test_labels)
     run = {
         "seed": seed,
@@ -106,6 +109,7 @@ def run_training(
         "learning_rate": config.learning_rate,
         "batch_size": config.batch_size,
         "epochs": config.epochs,
+        "device": device.type,
         **metrics,
     }
     probabilities = test_logits.softmax(dim=1)
@@ -127,7 +131,7 @@ def run_training(
 
 
 def save_completed_runs(
-    runs: list[dict[str, float | int]],
+    runs: list[dict[str, object]],
     histories: list[dict[str, float | int]],
     predictions: list[pd.DataFrame],
     results_dir: Path,
@@ -194,8 +198,18 @@ def package_versions() -> dict[str, str]:
     return {name: importlib.metadata.version(name) for name in packages}
 
 
-def run_experiment(output_dir: Path, smoke: bool) -> None:
+def resolve_device(requested: str) -> torch.device:
+    """Select CUDA when requested and available, otherwise use CPU for auto."""
+    if requested == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA was requested, but PyTorch cannot access a GPU")
+    if requested == "auto":
+        requested = "cuda" if torch.cuda.is_available() else "cpu"
+    return torch.device(requested)
+
+
+def run_experiment(output_dir: Path, smoke: bool, device_name: str = "auto") -> None:
     config = ExperimentConfig(seeds=(42,), epochs=1) if smoke else ExperimentConfig()
+    device = resolve_device(device_name)
     results_dir = output_dir / "results"
     figures_dir = output_dir / "figures"
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -204,24 +218,26 @@ def run_experiment(output_dir: Path, smoke: bool) -> None:
 
     metadata = {
         "mode": "smoke" if smoke else "all",
+        "device": str(device),
+        "gpu_name": torch.cuda.get_device_name(0) if device.type == "cuda" else None,
         "protocol": asdict(config),
         "versions": package_versions(),
     }
     (results_dir / "config.json").write_text(json.dumps(metadata, indent=2) + "\n")
 
-    runs: list[dict[str, float | int]] = []
+    runs: list[dict[str, object]] = []
     histories: list[dict[str, float | int]] = []
     predictions: list[pd.DataFrame] = []
     for seed in config.seeds:
         for epsilon in config.epsilons:
             run, run_history, run_predictions = run_training(
-                datasets, seed, epsilon, config
+                datasets, seed, epsilon, config, device
             )
             runs.append(run)
             histories.extend(run_history)
             predictions.append(run_predictions)
             save_completed_runs(runs, histories, predictions, results_dir)
-            print(f"saved seed={seed}, epsilon={epsilon:g}")
+            print(f"saved seed={seed}, epsilon={epsilon:g}, device={device}")
 
     aggregate_results(results_dir / "runs.csv", results_dir / "summary.csv")
     make_prism_tables(results_dir)
@@ -239,12 +255,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir", type=Path, default=Path("."), help="root for data and outputs"
     )
+    parser.add_argument(
+        "--device",
+        choices=("auto", "cpu", "cuda"),
+        default="auto",
+        help="compute device; auto selects CUDA when available",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    run_experiment(args.output_dir, smoke=args.smoke)
+    run_experiment(args.output_dir, smoke=args.smoke, device_name=args.device)
 
 
 if __name__ == "__main__":
