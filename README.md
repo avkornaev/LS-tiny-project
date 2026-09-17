@@ -2,13 +2,13 @@
 
 A tiny research project for learning how to plan, build, test, run, and report a machine-learning experiment with Codex.
 
-## Question
+## Research question
 
 How does label smoothing affect the accuracy, confidence, and calibration of logistic regression on MNIST digits 3 and 7?
 
 This is a controlled teaching experiment inspired by [When Does Label Smoothing Help?](https://arxiv.org/abs/1906.02629), not a reproduction of the full paper.
 
-## Experiment
+## Experimental protocol
 
 | Component | Fixed choice |
 |---|---|
@@ -27,7 +27,9 @@ $$
 \tilde{\mathbf y}=(1-\varepsilon)\mathbf y+\frac{\varepsilon}{K}\mathbf 1.
 $$
 
-Within each seed, the two conditions must use the same split, initialization, batch order, optimizer, and training schedule. Only $\varepsilon$ may differ.
+Within each seed, both conditions must use the same split, initialization, batch order, optimizer, and training schedule. Only $\varepsilon$ may differ.
+
+## Required evidence
 
 Report every run and `mean ± std` for:
 
@@ -38,101 +40,51 @@ Report every run and `mean ± std` for:
 - mean confidence;
 - absolute logit margin.
 
+Produce clear figures for:
+
+- validation dynamics;
+- calibration;
+- confidence distributions.
+
+The project must save machine-readable per-run results, aggregate results, the experiment configuration, and a concise generated report. Tables and figures must be derived from saved results, never entered manually.
+
 Three seeds demonstrate reproducible comparison; they do not justify strong significance claims.
 
-## Stack
+## Technology constraints
 
-- Python 3.11+
-- PyTorch and torchvision
-- NumPy, pandas, and scikit-learn
-- Matplotlib
-- pytest and Ruff
-- Jupyter / Google Colab
+Use a compact beginner-friendly stack:
 
-Keep the stack plain. Do not add training frameworks, experiment trackers, or configuration systems.
+- Python 3.11+;
+- PyTorch and torchvision;
+- NumPy, pandas, and scikit-learn;
+- Matplotlib;
+- pytest and Ruff;
+- Jupyter / Google Colab.
 
-## Project shape
+Do not add training frameworks, experiment trackers, dashboards, or configuration systems.
 
-```text
-.
-├── README.md
-├── AGENTS.md
-├── CODEX_PROMPT.md
-├── PLAN.md                       # created after plan approval
-├── pyproject.toml
-├── src/label_smoothing/
-│   ├── data.py
-│   ├── model.py                  # model and smoothed loss
-│   ├── metrics.py
-│   ├── experiment.py
-│   └── plots.py
-├── tests/
-│   ├── test_loss.py
-│   └── test_smoke.py
-└── notebooks/
-    └── run_in_colab.ipynb
-```
+## Functional requirements
 
-The notebook is a readable interface to the package. It must not duplicate the training implementation.
+The finished project must:
 
-## Commands
+- install as a small Python package;
+- run on CPU and, when available, CUDA;
+- provide a fast smoke experiment and the complete six-run experiment;
+- run locally and from one restart-and-run-all Colab notebook;
+- keep the notebook as an interface to tested package code;
+- preserve final outputs on Google Drive;
+- record the software environment, device, and Git revision;
+- exclude datasets, environments, caches, and generated runs from Git.
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
+The exact project structure, command-line interface, output layout, tests, and Colab procedure are design decisions to be proposed by Codex and approved before implementation.
 
-pytest -q
-ruff check .
-python -m label_smoothing.experiment --smoke
-python -m label_smoothing.experiment --all --device auto
-```
+## Development workflow
 
-`--smoke` uses a tiny synthetic dataset and one epoch. It checks the pipeline, not the hypothesis.
+1. Codex proposes a plan without editing files.
+2. The human reviews the scientific and engineering decisions.
+3. Codex saves the approved plan, implements the project, and verifies it.
+4. The full experiment runs once in Colab and saves its evidence to Google Drive.
+5. The verified report, tables, and figures become inputs for Prism.
 
-Each full invocation creates a new output directory containing:
-
-```text
-report.md
-results/config.json
-results/runs.csv
-results/summary.csv
-results/history.csv
-figures/validation_loss.png
-figures/reliability.png
-figures/confidence.png
-```
-
-Tables and figures must be generated from saved raw results. Do not type experimental values manually.
-
-## Colab and Google Drive
-
-The same notebook should run in Google Colab or in VS Code connected to a Colab kernel.
-
-It should, in order:
-
-1. verify the runtime and print the selected device;
-2. clone or update the GitHub repository;
-3. install the project with `pip install -e ".[dev]"`;
-4. run `pytest -q` and the smoke test;
-5. mount Google Drive;
-6. run the six experiments once;
-7. save the complete output folder under `MyDrive/LS-tiny-project/reports`;
-8. display the final table and figures.
-
-A GPU is optional for this linear model. Colab is useful mainly as a reproducible remote environment and for persistent Drive storage. If CUDA is selected, record the GPU name; if CPU is used, record that instead.
-
-Do not commit downloaded data, virtual environments, caches, or generated output folders. Preserve the Git commit hash with every final experiment.
-
-## Classroom workflow
-
-1. Read the question and freeze the protocol.
-2. Open the repository in Codex using **Sol Medium** and plan before editing.
-3. Discuss the plan; the human approves scientific and structural decisions.
-4. Ask Codex to save `PLAN.md`, implement, and verify the project.
-5. Run the notebook in Colab and save the evidence to Drive.
-6. Use `report.md`, CSV tables, and figures as verified inputs for Prism.
-
-The student remains responsible for understanding the code, checking the experiment, and defending every claim.
+After implementation, update this README with the actual project structure and exact usage instructions.
 

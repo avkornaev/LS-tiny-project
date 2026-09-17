@@ -2,20 +2,21 @@
 
 ## Goal
 
-Build the small, readable, and reproducible teaching project specified in `README.md`. Prefer clarity over generality.
+Build the compact, readable, and reproducible teaching project specified in `README.md`. Prefer clarity over generality.
 
 ## Working method
 
 - Inspect the repository before proposing changes.
 - Plan before implementation; do not edit during the planning stage.
-- After approval, save the agreed plan as `PLAN.md` and implement it in small steps.
-- Test each completed layer and finish with the full required verification.
-- Ask only when an ambiguity would change the scientific protocol or project structure.
+- Propose the simplest architecture that satisfies the specification.
+- Wait for approval, then save the agreed plan as `PLAN.md`.
+- Implement in small, reviewable steps and test each completed layer.
+- Ask only when an ambiguity would change the scientific protocol or project design.
 - Never change a scientific invariant silently.
 
 ## Scientific contract
 
-- Use only MNIST digits 3 and 7; map them to 0 and 1 consistently.
+- Use only MNIST digits 3 and 7; map them consistently to 0 and 1.
 - Use all eligible examples from the official training set.
 - Use one fixed stratified 80/20 train/validation split with seed 2026.
 - Keep the official test set untouched until final evaluation.
@@ -35,47 +36,26 @@ $$
 
 Do not replace it with a library option.
 
-## Engineering rules
+## Engineering principles
 
-- Use a standard `src` package and `pyproject.toml`.
-- Prefer small functions, plain Python, `pathlib`, `argparse`, and helpful type hints.
+- Use the technology constraints in `README.md` and keep dependencies minimal.
+- Prefer small functions, plain Python, and descriptive names.
+- Use type hints where they clarify interfaces.
 - Comment reasoning and non-obvious choices, not ordinary syntax.
-- Keep data, model/loss, metrics, experiment, and plotting responsibilities separate.
-- Keep the Colab notebook short; import project code instead of copying it.
-- Support CPU and CUDA through `--device auto|cpu|cuda`.
-- A requested CUDA run must fail clearly when CUDA is unavailable.
-- Do not add Hydra, Lightning, MLflow, notebooks-as-source, dashboards, or premature abstractions.
+- Separate responsibilities without creating unnecessary files or abstractions.
+- Keep the Colab notebook short and call tested package code from it.
+- Support CPU and optional CUDA; a requested CUDA run must fail clearly when unavailable.
+- Do not add Hydra, Lightning, MLflow, notebooks-as-source, or premature abstractions.
 
-## Evidence
+## Evidence and verification
 
-Each full invocation must create a new output folder with:
-
-- configuration and environment information;
-- individual and aggregate CSV results;
-- per-epoch history;
-- a generated `report.md`;
-- validation-loss, reliability, and confidence figures.
-
-Never invent, repair, or manually enter results. Do not claim that label smoothing helps unless the saved evidence supports it.
-
-## Required verification
-
-Run:
-
-```bash
-pytest -q
-ruff check .
-python -m label_smoothing.experiment --smoke
-```
-
-Tests must verify at least:
-
-- digit filtering and label mapping;
-- deterministic splitting;
-- valid smoothed targets;
-- equivalence to ordinary cross-entropy when $\varepsilon=0$;
-- a parameter update after one optimizer step;
-- finite metrics and creation of expected output files.
+- Save individual results before aggregation.
+- Record the configuration, package versions, device, and Git revision.
+- Generate the report, tables, and figures from saved raw results.
+- Include focused unit tests and a fast end-to-end smoke test.
+- Verify formatting/linting, tests, and the smoke experiment before completion.
+- Never invent, repair, or manually enter experimental results.
+- Do not claim that label smoothing helps unless the evidence supports it.
 
 If a check cannot run, state the reason and what remains unverified. Preserve unrelated user changes. Do not commit or push unless explicitly asked.
 
